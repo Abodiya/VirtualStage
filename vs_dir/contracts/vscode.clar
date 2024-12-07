@@ -1,17 +1,20 @@
+
 ;; Virtual Concert Ticket & Performance Rights Marketplace
-;; Full implementation with fan passes, event access, and comprehensive features
+;; Platform for artists to sell virtual concert tickets and streaming rights
 
 ;; Constants for viewer tiers
 (define-constant STANDARD u1)
 (define-constant VIP u2)
 (define-constant BACKSTAGE u3)
 
-;; Constants for minimum requirements and validation
+;; Constants for minimum requirements
 (define-constant MIN-ARTIST-DEPOSIT u1000)
 (define-constant MIN-STREAM-QUALITY u60)
 (define-constant MINIMUM-TICKET-PRICE u100)
+
+;; Constants for validation
 (define-constant MAX-EVENT-ID u1000000)
-(define-constant MAX-STREAM-DURATION u31536000)
+(define-constant MAX-STREAM-DURATION u31536000) ;; Max duration 1 year in seconds
 (define-constant MAX-PASS-PRICE u1000000)
 
 ;; Error codes
@@ -211,4 +214,46 @@
       (asserts! (get scheduled event-info) ERR-NOT-FOUND)
       (try! (stx-transfer? (get ticket-price latest-details) tx-sender (get artist event-info)))
       (ok (map-set event-access
-        {viewer: tx-sender, event-id: event-
+        {viewer: tx-sender, event-id: event-id}
+        {
+          start-time: start-time,
+          end-time: end-time,
+          tier: (get tier fan-pass)
+        })))))
+
+;; Helper functions
+(define-private (calculate-stream-quality (event-id uint))
+  (let
+    ((event (unwrap! (map-get? virtual-events {event-id: event-id}) u0)))
+    (if (>= (get max-capacity event) u1000)
+        u95
+        u80)))
+
+(define-private (calculate-pass-price (tier uint) (duration uint))
+  (let
+    ((base-price-per-second u1))
+    (* base-price-per-second
+       duration
+       (if (is-eq tier BACKSTAGE)
+           u3
+           (if (is-eq tier VIP)
+               u2
+               u1)))))
+
+;; Read-only functions
+(define-read-only (get-event-info (event-id uint))
+  (map-get? virtual-events {event-id: event-id}))
+
+(define-read-only (get-performance-details (event-id uint))
+  (map-get? performance-details {event-id: event-id}))
+
+(define-read-only (check-event-access (viewer principal) (event-id uint) (current-time uint))
+  (let
+    ((access-info (map-get? event-access {viewer: viewer, event-id: event-id})))
+    (and
+      (is-some access-info)
+      (>= current-time (get start-time (unwrap! access-info false)))
+      (<= current-time (get end-time (unwrap! access-info false))))))
+
+(define-read-only (get-fan-pass-info (viewer principal))
+  (map-get? fan-passes {viewer: viewer}))
